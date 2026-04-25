@@ -1,4 +1,46 @@
-- name: Get latest MLflow run_id
+name: MLflow CI CD Advanced
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  mlops:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up job
+        run: echo "Starting Advanced Pipeline for Adinda"
+
+      - name: Run actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12.7
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.7'
+
+      - name: Check Env
+        run: |
+          python --version
+          pip --version
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install mlflow dagshub pandas scikit-learn matplotlib
+
+      - name: Run mlflow project
+        env:
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: https://dagshub.com/${{ secrets.DAGSHUB_USERNAME }}/Eksperimen_SML_Adinda_Intan_Erlita.mlflow
+        run: |
+          cd MLProject
+          mlflow run . --env-manager=local --experiment-name "Latihan_Model_Basic"
+
+      - name: Get latest MLflow run_id
         env:
           MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
@@ -9,17 +51,63 @@
           RUN_ID=$(python -c "
           import mlflow, os
           mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
-          runs = mlflow.search_runs(experiment_names=['Basic_Model'])
+          runs = mlflow.search_runs(experiment_names=['Latihan_Model_Basic'])
           print(runs.sort_values('start_time', ascending=False).iloc[0].run_id)
           ")
 
           echo "RUN_ID=$RUN_ID"
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
 
-          # ✅ Download SEMUA artifacts tanpa --artifact-path
+          # Download artifact folder sentiment_model saja
           mlflow artifacts download \
             --run-id "$RUN_ID" \
+            --artifact-path "sentiment_model" \
             --dst-path ./model_download
 
           echo "=== Isi model_download ==="
           find ./model_download -type f
+
+      - name: Install Python dependencies
+        run: echo "Verifying artifacts for GitHub Upload..."
+
+      - name: Upload to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLflow-Results-Adinda
+          path: ./model_download
+          retention-days: 7
+
+      - name: Build Docker Model
+        run: |
+          # Path sudah pasti: ./model_download/sentiment_model/
+          MODEL_PATH="./model_download/sentiment_model"
+
+          if [ ! -f "$MODEL_PATH/MLmodel" ]; then
+            echo "ERROR: MLmodel tidak ditemukan di $MODEL_PATH"
+            find ./model_download -type f
+            exit 1
+          fi
+
+          echo "MODEL_PATH=$MODEL_PATH"
+          mlflow models build-docker \
+            -m "$MODEL_PATH" \
+            -n sentiment-model \
+            --enable-mlserver
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Tag Docker Image
+        run: |
+          docker tag sentiment-model \
+            ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
+
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
+
+      - name: Complete job
+        run: echo "Advanced Pipeline Finished Successfully"
