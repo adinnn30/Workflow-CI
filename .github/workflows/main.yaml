@@ -8,12 +8,8 @@ on:
 jobs:
   mlops:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Set up job
-        run: echo "Starting Skilled Pipeline for Adinda"
-
-      - name: Run actions/checkout@v3
+      - name: Run actions/checkout@v4
         uses: actions/checkout@v4
 
       - name: Set up Python 3.12.7
@@ -21,53 +17,30 @@ jobs:
         with:
           python-version: '3.12.7'
 
-      - name: Check Env
-        run: |
-          python --version
-          pip --version
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install mlflow dagshub pandas scikit-learn matplotlib
-      - name: Set MLflow Tracking URI
+
+      - name: Run MLflow Local Server
         run: |
-          echo "MLFLOW_TRACKING_URI=https://dagshub.com/${{ secrets.DAGSHUB_USERNAME }}/Eksperimen_SML_Adinda_Intan_Erlita.mlflow" >> $GITHUB_ENV
+          mlflow ui --port 5000 & 
+          sleep 10 # Tunggu server nyala
+
       - name: Run mlflow project
-        env:
-          MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
-          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
         run: |
           cd MLProject
-          mlflow run . --env-manager=local --experiment-name "Basic_Model"
-      - name: Get latest MLflow run_id
-        env:
-          MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
-          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
-        run: |
-          # Jeda sebentar agar DagsHub sinkron
-          sleep 10
-          # Ambil Run ID terbaru dan simpan hasilnya ke folder local 'outputs'
-          RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('${{ env.MLFLOW_TRACKING_URI }}'); print(mlflow.search_runs(experiment_names=['Basic_Model']).sort_values('start_time', ascending=False).iloc[0].run_id)")
-          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-          mlflow artifacts download --run-id $RUN_ID --dst-path ./outputs
-      - name: Install Python dependencies
-        run: echo "Verifying artifacts for GitHub Upload..."
+          mlflow run . --env-manager=local --experiment-name "Latihan_Model_Basic"
 
-      # Memunculkan hasil (Output) di GitHub Actions
+      - name: Get Artifacts from Local
+        run: |
+          # Karena servernya lokal, kita ambil folder mlruns yang terbentuk
+          mkdir -p outputs
+          cp -r mlruns/* outputs/
+          
       - name: Upload to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: MLflow-Results-Adinda
-          path: ./outputs # mengunggah semua hasil training (model, params, metrics)
+          path: outputs/
           retention-days: 7
-
-      - name: Post Set up Python 3.12.7
-        run: echo "Cleaning up..."
-
-      - name: Post Run actions/checkout@v3
-        run: echo "Cleaning up..."
-
-      - name: Complete job
-        run: echo "Pipeline Finished - Check Summary tab for Artifacts"
