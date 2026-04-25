@@ -9,7 +9,7 @@ jobs:
   mlops:
     runs-on: ubuntu-latest
     steps:
-      - name: Run actions/checkout@v4
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Python 3.12.7
@@ -20,27 +20,30 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install mlflow dagshub pandas scikit-learn matplotlib
+          pip install mlflow==3.11.1 pandas==2.3.3 scikit-learn==1.8.0 matplotlib cloudpickle numpy
 
       - name: Run MLflow Local Server
         run: |
-          # Menjalankan server di background agar modelling.py bisa akses 127.0.0.1:5000
+          # Menjalankan server di background agar port 5000 aktif
           mlflow ui --port 5000 &
           sleep 15
 
       - name: Run modelling.py
         run: |
+          # Berpindah ke folder project dan eksekusi
           cd MLProject
-          # Menjalankan file python secara langsung
           python modelling.py
 
       - name: Prepare Artifacts
         run: |
-          # Mengambil hasil dari folder mlruns (lokal) ke folder outputs
+          mkdir -p outputs
+          # Perbaikan Path: Mengambil mlruns dari dalam folder MLProject
           if [ -d "MLProject/mlruns" ]; then
             cp -r MLProject/mlruns/* outputs/
+            echo "Artifacts found in MLProject/mlruns"
           else
-            cp -r mlruns/* outputs/
+            echo "Error: mlruns directory not found!"
+            exit 1
           fi
 
       - name: Upload to GitHub
@@ -49,6 +52,3 @@ jobs:
           name: MLflow-Results-Adinda
           path: outputs/
           retention-days: 7
-
-      - name: Complete job
-        run: echo "Pipeline Finished"
