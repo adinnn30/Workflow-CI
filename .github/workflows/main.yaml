@@ -38,6 +38,14 @@ jobs:
           MLFLOW_TRACKING_URI: https://dagshub.com/${{ secrets.DAGSHUB_USERNAME }}/Eksperimen_SML_Adinda_Intan_Erlita.mlflow
         run: |
           cd MLProject
+
+          # Override localhost → DagsHub tracking URI
+          sed -i "s|mlflow.set_tracking_uri(\"http://127.0.0.1:5000/\")|mlflow.set_tracking_uri(\"${MLFLOW_TRACKING_URI}\")|g" modelling.py
+
+          # Verifikasi sed berhasil
+          echo "=== Cek tracking URI ==="
+          grep "set_tracking_uri" modelling.py
+
           mlflow run . --env-manager=local --experiment-name "Latihan_Model_Basic"
 
       - name: Get latest MLflow run_id
@@ -58,7 +66,6 @@ jobs:
           echo "RUN_ID=$RUN_ID"
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
 
-          # Download artifact folder sentiment_model saja
           mlflow artifacts download \
             --run-id "$RUN_ID" \
             --artifact-path "sentiment_model" \
@@ -79,7 +86,6 @@ jobs:
 
       - name: Build Docker Model
         run: |
-          # Path sudah pasti: ./model_download/sentiment_model/
           MODEL_PATH="./model_download/sentiment_model"
 
           if [ ! -f "$MODEL_PATH/MLmodel" ]; then
