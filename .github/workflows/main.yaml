@@ -20,27 +20,25 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install mlflow==3.11.1 pandas==2.3.3 scikit-learn==1.8.0 matplotlib dagshub
+          pip install mlflow==3.11.1 pandas==2.3.3 scikit-learn==1.8.0 matplotlib dagshub cloudpickle numpy
 
       - name: Run MLflow Local Server
         run: |
-          # Menjalankan server agar modelling.py bisa akses 127.0.0.1:5000
+          # Jalankan server lokal di background
           mlflow ui --port 5000 &
-          sleep 10
+          sleep 15
 
-      - name: Run mlflow project
+      - name: Execute Modelling
         run: |
           cd MLProject
-          # Menjalankan project secara lokal ke server 127.0.0.1 tadi
-          mlflow run . --env-manager=local --experiment-name "Latihan_Model_Basic"
+          python modelling.py
 
       - name: Get latest MLflow run_id and Download
         run: |
-          # Mencari Run ID terbaru dari eksperimen 'Latihan_Model_Basic' di server lokal
           RUN_ID=$(python -c "import mlflow; mlflow.set_tracking_uri('http://127.0.0.1:5000'); print(mlflow.search_runs(experiment_names=['Latihan_Model_Basic']).sort_values('start_time', ascending=False).iloc[0].run_id)")
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
           
-          # Mendownload artefaknya ke folder 'outputs' (Bukan pakai cp, tapi download resmi)
+          # Download hasil ke folder outputs
           mlflow artifacts download --run-id $RUN_ID --dst-path ./outputs --tracking-uri http://127.0.0.1:5000
 
       - name: Upload to GitHub
@@ -51,4 +49,4 @@ jobs:
           retention-days: 7
 
       - name: Complete job
-        run: echo "Pipeline Finished - Check Summary tab for Artifacts"
+        run: echo "Pipeline Finished"
