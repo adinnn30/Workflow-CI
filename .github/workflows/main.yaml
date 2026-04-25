@@ -24,23 +24,31 @@ jobs:
 
       - name: Run MLflow Local Server
         run: |
-          mlflow ui --port 5000 & 
-          sleep 10 # Tunggu server nyala
+          # Menjalankan server di background agar modelling.py bisa akses 127.0.0.1:5000
+          mlflow ui --port 5000 &
+          sleep 15
 
-      - name: Run mlflow project
+      - name: Run modelling.py
         run: |
           cd MLProject
-          mlflow run . --env-manager=local --experiment-name "Latihan_Model_Basic"
+          # Menjalankan file python secara langsung
+          python modelling.py
 
-      - name: Get Artifacts from Local
+      - name: Prepare Artifacts
         run: |
-          # Karena servernya lokal, kita ambil folder mlruns yang terbentuk
-          mkdir -p outputs
-          cp -r mlruns/* outputs/
-          
+          # Mengambil hasil dari folder mlruns (lokal) ke folder outputs
+          if [ -d "MLProject/mlruns" ]; then
+            cp -r MLProject/mlruns/* outputs/
+          else
+            cp -r mlruns/* outputs/
+          fi
+
       - name: Upload to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: MLflow-Results-Adinda
           path: outputs/
           retention-days: 7
+
+      - name: Complete job
+        run: echo "Pipeline Finished"
