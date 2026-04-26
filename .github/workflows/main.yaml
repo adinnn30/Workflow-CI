@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Set up job
-        run: echo "Starting Advanced Pipeline for Adinda"
+        run: echo "Starting Skilled Pipeline for Adinda"
 
       - name: Run actions/checkout@v3
         uses: actions/checkout@v4
@@ -65,15 +65,9 @@ jobs:
           echo "RUN_ID=$RUN_ID"
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
 
-          # Download artifacts biasa (png, html, dll)
+          # Download SEMUA artifacts tanpa --artifact-path
           mlflow artifacts download \
             --run-id "$RUN_ID" \
-            --dst-path ./outputs
-
-          # Download model secara terpisah
-          mlflow artifacts download \
-            --run-id "$RUN_ID" \
-            --artifact-path "sentiment_model" \
             --dst-path ./outputs
 
           echo "=== Isi outputs ==="
@@ -89,17 +83,42 @@ jobs:
           path: ./outputs
           retention-days: 7
 
+      # ✅ TAMBAHAN ADVANCED
       - name: Build Docker Model
+        env:
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
         run: |
-          MODEL_PATH="./outputs/sentiment_model"
+          # Cari MLmodel dari hasil download
+          MODEL_PATH=$(find ./outputs -type f -name "MLmodel" -print0 \
+            | xargs -0 -I{} dirname {} \
+            | head -n 1)
 
-          if [ ! -f "$MODEL_PATH/MLmodel" ]; then
-            echo "ERROR: MLmodel tidak ditemukan di $MODEL_PATH"
-            find ./outputs -type f
-            exit 1
+          # Kalau tidak ketemu di outputs, download ulang via Python
+          if [ -z "$MODEL_PATH" ]; then
+            echo "MLmodel tidak ada di outputs, download via Python..."
+            python -c "
+          import mlflow, os
+          mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
+          mlflow.artifacts.download_artifacts(
+              run_id=os.environ['RUN_ID'],
+              dst_path='./model_only'
+          )
+            "
+            MODEL_PATH=$(find ./model_only -type f -name "MLmodel" -print0 \
+              | xargs -0 -I{} dirname {} \
+              | head -n 1)
           fi
 
           echo "MODEL_PATH=$MODEL_PATH"
+
+          if [ -z "$MODEL_PATH" ]; then
+            echo "ERROR: MLmodel tetap tidak ditemukan"
+            find ./outputs ./model_only -type f 2>/dev/null
+            exit 1
+          fi
+
           mlflow models build-docker \
             -m "$MODEL_PATH" \
             -n sentiment-model \
