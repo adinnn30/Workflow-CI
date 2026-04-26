@@ -1,4 +1,4 @@
-name: MLflow CI Skilled
+name: MLflow CI CD Advanced
 
 on:
   push:
@@ -42,14 +42,9 @@ jobs:
           MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
         run: |
           cd MLProject
-
-          # Override tracking URI di modelling.py agar tidak pakai localhost
           sed -i 's|mlflow.set_tracking_uri("http://127.0.0.1:5000/")|mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])|g' modelling.py
           sed -i 's|mlflow.set_experiment("Latihan_Model_Basic")|mlflow.set_experiment("Basic_Model")|g' modelling.py
-
-          # Pastikan import os ada
           sed -i '1s/^/import os\n/' modelling.py
-
           mlflow run . --env-manager=local --experiment-name "Basic_Model"
 
       - name: Get latest MLflow run_id
@@ -70,7 +65,6 @@ jobs:
           echo "RUN_ID=$RUN_ID"
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
 
-          # Download semua artifacts dari DagsHub ke folder outputs
           mlflow artifacts download \
             --run-id "$RUN_ID" \
             --dst-path ./outputs
@@ -88,11 +82,40 @@ jobs:
           path: ./outputs
           retention-days: 7
 
-      - name: Post Set up Python 3.12.7
-        run: echo "Cleaning up..."
+      # ✅ TAMBAHAN ADVANCED — 4 step baru di bawah ini
+      - name: Build Docker Model
+        run: |
+          MODEL_PATH=$(find ./outputs -type f -name "MLmodel" -print0 \
+            | xargs -0 -I{} dirname {} \
+            | head -n 1)
 
-      - name: Post Run actions/checkout@v3
-        run: echo "Cleaning up..."
+          echo "MODEL_PATH=$MODEL_PATH"
+
+          if [ -z "$MODEL_PATH" ]; then
+            echo "ERROR: MLmodel tidak ditemukan, struktur folder:"
+            find ./outputs -type f
+            exit 1
+          fi
+
+          mlflow models build-docker \
+            -m "$MODEL_PATH" \
+            -n sentiment-model \
+            --enable-mlserver
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Tag Docker Image
+        run: |
+          docker tag sentiment-model \
+            ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
+
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
 
       - name: Complete job
-        run: echo "Pipeline Finished - Check Summary tab for Artifacts"
+        run: echo "Advanced Pipeline Finished Successfully"
