@@ -1,4 +1,4 @@
-name: MLflow CI CD Advanced
+name: MLflow CI Skilled
 
 on:
   push:
@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Set up job
-        run: echo "Starting Advanced Pipeline for Adinda"
+        run: echo "Starting Skilled Pipeline for Adinda"
 
       - name: Run actions/checkout@v3
         uses: actions/checkout@v4
@@ -31,48 +31,52 @@ jobs:
           pip install --upgrade pip
           pip install mlflow dagshub pandas scikit-learn matplotlib
 
+      - name: Set MLflow Tracking URI
+        run: |
+          echo "MLFLOW_TRACKING_URI=https://dagshub.com/${{ secrets.DAGSHUB_USERNAME }}/Eksperimen_SML_Adinda_Intan_Erlita.mlflow" >> $GITHUB_ENV
+
       - name: Run mlflow project
         env:
           MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI: https://dagshub.com/${{ secrets.DAGSHUB_USERNAME }}/Eksperimen_SML_Adinda_Intan_Erlita.mlflow
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
         run: |
           cd MLProject
 
-          # Override localhost → DagsHub tracking URI
-          sed -i "s|mlflow.set_tracking_uri(\"http://127.0.0.1:5000/\")|mlflow.set_tracking_uri(\"${MLFLOW_TRACKING_URI}\")|g" modelling.py
+          # Override tracking URI di modelling.py agar tidak pakai localhost
+          sed -i 's|mlflow.set_tracking_uri("http://127.0.0.1:5000/")|mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])|g' modelling.py
+          sed -i 's|mlflow.set_experiment("Latihan_Model_Basic")|mlflow.set_experiment("Basic_Model")|g' modelling.py
 
-          # Verifikasi sed berhasil
-          echo "=== Cek tracking URI ==="
-          grep "set_tracking_uri" modelling.py
+          # Pastikan import os ada
+          sed -i '1s/^/import os\n/' modelling.py
 
-          mlflow run . --env-manager=local --experiment-name "Latihan_Model_Basic"
+          mlflow run . --env-manager=local --experiment-name "Basic_Model"
 
       - name: Get latest MLflow run_id
         env:
           MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI: https://dagshub.com/${{ secrets.DAGSHUB_USERNAME }}/Eksperimen_SML_Adinda_Intan_Erlita.mlflow
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
         run: |
-          sleep 20
+          sleep 10
 
           RUN_ID=$(python -c "
           import mlflow, os
           mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
-          runs = mlflow.search_runs(experiment_names=['Latihan_Model_Basic'])
+          runs = mlflow.search_runs(experiment_names=['Basic_Model'])
           print(runs.sort_values('start_time', ascending=False).iloc[0].run_id)
           ")
 
           echo "RUN_ID=$RUN_ID"
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
 
+          # Download semua artifacts dari DagsHub ke folder outputs
           mlflow artifacts download \
             --run-id "$RUN_ID" \
-            --artifact-path "sentiment_model" \
-            --dst-path ./model_download
+            --dst-path ./outputs
 
-          echo "=== Isi model_download ==="
-          find ./model_download -type f
+          echo "=== Isi outputs ==="
+          find ./outputs -type f
 
       - name: Install Python dependencies
         run: echo "Verifying artifacts for GitHub Upload..."
@@ -81,39 +85,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MLflow-Results-Adinda
-          path: ./model_download
+          path: ./outputs
           retention-days: 7
 
-      - name: Build Docker Model
-        run: |
-          MODEL_PATH="./model_download/sentiment_model"
+      - name: Post Set up Python 3.12.7
+        run: echo "Cleaning up..."
 
-          if [ ! -f "$MODEL_PATH/MLmodel" ]; then
-            echo "ERROR: MLmodel tidak ditemukan di $MODEL_PATH"
-            find ./model_download -type f
-            exit 1
-          fi
-
-          echo "MODEL_PATH=$MODEL_PATH"
-          mlflow models build-docker \
-            -m "$MODEL_PATH" \
-            -n sentiment-model \
-            --enable-mlserver
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Tag Docker Image
-        run: |
-          docker tag sentiment-model \
-            ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
-
-      - name: Push Docker Image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
+      - name: Post Run actions/checkout@v3
+        run: echo "Cleaning up..."
 
       - name: Complete job
-        run: echo "Advanced Pipeline Finished Successfully"
+        run: echo "Pipeline Finished - Check Summary tab for Artifacts"
