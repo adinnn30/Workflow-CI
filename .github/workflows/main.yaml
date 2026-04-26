@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Set up job
-        run: echo "Starting Skilled Pipeline for Adinda"
+        run: echo "Starting Advanced Pipeline for Adinda"
 
       - name: Run actions/checkout@v3
         uses: actions/checkout@v4
@@ -65,8 +65,15 @@ jobs:
           echo "RUN_ID=$RUN_ID"
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
 
+          # Download artifacts biasa (png, html, dll)
           mlflow artifacts download \
             --run-id "$RUN_ID" \
+            --dst-path ./outputs
+
+          # Download model secara terpisah
+          mlflow artifacts download \
+            --run-id "$RUN_ID" \
+            --artifact-path "sentiment_model" \
             --dst-path ./outputs
 
           echo "=== Isi outputs ==="
@@ -82,21 +89,17 @@ jobs:
           path: ./outputs
           retention-days: 7
 
-      # ✅ TAMBAHAN ADVANCED — 4 step baru di bawah ini
       - name: Build Docker Model
         run: |
-          MODEL_PATH=$(find ./outputs -type f -name "MLmodel" -print0 \
-            | xargs -0 -I{} dirname {} \
-            | head -n 1)
+          MODEL_PATH="./outputs/sentiment_model"
 
-          echo "MODEL_PATH=$MODEL_PATH"
-
-          if [ -z "$MODEL_PATH" ]; then
-            echo "ERROR: MLmodel tidak ditemukan, struktur folder:"
+          if [ ! -f "$MODEL_PATH/MLmodel" ]; then
+            echo "ERROR: MLmodel tidak ditemukan di $MODEL_PATH"
             find ./outputs -type f
             exit 1
           fi
 
+          echo "MODEL_PATH=$MODEL_PATH"
           mlflow models build-docker \
             -m "$MODEL_PATH" \
             -n sentiment-model \
