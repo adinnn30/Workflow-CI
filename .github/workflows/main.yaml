@@ -54,21 +54,15 @@ jobs:
           MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
         run: |
           sleep 10
-
           RUN_ID=$(python -c "
           import mlflow, os
           mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
           runs = mlflow.search_runs(experiment_names=['Basic_Model'])
           print(runs.sort_values('start_time', ascending=False).iloc[0].run_id)
           ")
-
           echo "RUN_ID=$RUN_ID"
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-
-          mlflow artifacts download \
-            --run-id "$RUN_ID" \
-            --dst-path ./outputs
-
+          mlflow artifacts download --run-id "$RUN_ID" --dst-path ./outputs
           echo "=== Isi outputs ==="
           find ./outputs -type f
 
@@ -83,60 +77,10 @@ jobs:
           retention-days: 7
 
       - name: Build Docker Model
-        env:
-          MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
-          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
-          RUN_ID: ${{ env.RUN_ID }}
         run: |
-          cat > find_model.py << 'PYEOF'
-          import mlflow, os
-
-          mlflow.set_tracking_uri(os.environ['MLFLOW_TRACKING_URI'])
-          run_id = os.environ['RUN_ID']
-          print(f'Loading model from run: {run_id}')
-
-          client = mlflow.tracking.MlflowClient()
-          artifacts = client.list_artifacts(run_id)
-
-          print('=== Artifacts di DagsHub ===')
-          for a in artifacts:
-              print(f'  {a.path} (is_dir={a.is_dir})')
-              if a.is_dir:
-                  sub = client.list_artifacts(run_id, a.path)
-                  for s in sub:
-                      print(f'    {s.path}')
-
-          for a in artifacts:
-              if a.is_dir:
-                  print(f'Downloading folder: {a.path}')
-                  mlflow.artifacts.download_artifacts(
-                      run_id=run_id,
-                      artifact_path=a.path,
-                      dst_path=f'./model_dir/{a.path}'
-                  )
-          PYEOF
-
-          python find_model.py
-
-          echo "=== Struktur model_dir ==="
-          find ./model_dir -type f
-
-          MODEL_PATH=$(find ./model_dir -type f -name "MLmodel" -print0 \
-            | xargs -0 -I{} dirname {} \
-            | head -n 1)
-
-          echo "MODEL_PATH=$MODEL_PATH"
-
-          if [ -z "$MODEL_PATH" ]; then
-            echo "ERROR: MLmodel tidak ditemukan"
-            exit 1
-          fi
-
-          mlflow models build-docker \
-            -m "$MODEL_PATH" \
-            -n sentiment-model \
-            --enable-mlserver
+          python build_model.py
+          find ./local_model -type f
+          mlflow models build-docker -m "./local_model" -n sentiment-model --enable-mlserver
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -146,8 +90,7 @@ jobs:
 
       - name: Tag Docker Image
         run: |
-          docker tag sentiment-model \
-            ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
+          docker tag sentiment-model ${{ secrets.DOCKER_USERNAME }}/sentiment-model:latest
 
       - name: Push Docker Image
         run: |
